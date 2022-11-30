@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Image uploading service
+
+Parameters:
+  SourceBucketName:
+    Type: String
+    Default: image-upload-aws-poc
+
+Resources:
+  ## S3 bucket
+  SourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref SourceBucketName    
+  
+  ## Lambda function
+  ListenerFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: src/
+      Handler: index.handler
+      Runtime: nodejs12.x
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref SourceBucketName
+        - RekognitionLabelsPolicy: {}
+      Events:
+        FileUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref SourceBucket
+            Events: s3:ObjectCreated:*
+
+Outputs:
+  SourceBucketName:
+    Value: !Ref SourceBucketName
+    Description: S3 Bucket for object storage
+  FunctionArn:
+    Value: !Ref ListenerFunction
+    Description: ListenerFunction function  Arn

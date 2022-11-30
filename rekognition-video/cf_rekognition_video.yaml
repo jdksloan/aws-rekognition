@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RekognitionVideoLambda'
+Parameters:
+  KinesisDataStreamARN:
+    Description: Kinesis data stream ARN
+    Type: String
+    
+Resources:
+
+  SNSTopic:
+    Type: "AWS::SNS::Topic"
+    Properties: 
+      DisplayName: rekognition-video-email-topic
+      Subscription:
+        -
+          Endpoint: 'gp.bnl.vat@adevinta.com'
+          Protocol: email
+
+  SNSPublishRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: '/'
+      Policies:
+        -
+          PolicyName: lambda-comprehend-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                    - 'sns:Publish'
+                Resource: !Ref SNSTopic
+              -
+                Effect: Allow
+                Action:
+                    - 'kinesis:GetRecords'
+                    - 'kinesis:GetShardIterator'
+                    - 'kinesis:DescribeStream'
+                    - 'kinesis:ListStreams'
+                Resource: !Sub ${KinesisDataStreamARN}
+              -
+                Effect: Allow
+                Action:
+                    - 'kinesis:ListStreams'
+                Resource: '*'
+
+  RekognitionVideoIAM:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: rekognition.amazonaws.com
+            Action: sts:AssumeRole
+      Path: '/'
+      Policies:
+        -
+          PolicyName: lambda-comprehend-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                    - 'kinesis:*'
+                Resource: !Sub ${KinesisDataStreamARN}
+              -
+                Effect: Allow
+                Action:
+                    - 'kinesisvideo:*'
+                Resource: '*'
+              -
+                Effect: Allow
+                Action:
+                    - 'rekognition:*'
+                Resource: '*'
+
+  RekognitionVideoLambda: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      Environment:
+        Variables:
+          sns: !Ref SNSTopic
+      Handler: "rekognition_video.lambda_handler"
+      Role: !GetAtt SNSPublishRole.Arn
+      Code: 
+        S3Bucket: "vat-aws-rekognition-lambda"
+        S3Key: "lambda.zip"
+      Runtime: "python3.9"
+      Timeout: "120"
+
+  RekognitionLambdaKinesisMapping:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties: 
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !Sub ${KinesisDataStreamARN}
+      FunctionName: !GetAtt  RekognitionVideoLambda.Arn
+      StartingPosition: "TRIM_HORIZON"
+
+Outputs:
+  RekognitionVideoIAM:
+    Description: Rekognition Video Processing IAM Arn
+    Value: !GetAtt RekognitionVideoIAM.Arn
+
